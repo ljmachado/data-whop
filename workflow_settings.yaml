@@ -1,5 +1,5 @@
 defaultProject: whop-c2683
 defaultLocation: us-east1
-defaultDataset: whop_dwh_staging
+defaultDataset: whop_dwh
 defaultAssertionDataset: dataform_assertions
 dataformCoreVersion: 3.0.0-beta.4
