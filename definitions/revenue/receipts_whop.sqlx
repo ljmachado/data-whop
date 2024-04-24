@@ -1,0 +1,39 @@
+config {
+    type: "table",
+    description: "Receipts which payment was processed and settled in our platform. Imported receipts from other platforms are removed.",
+    columns: {
+        received_at: "Date of settlement for the receipt",
+        gmv: "GMV processed by the company after conversions and fx",
+        gross_fee: "Actual fee receiveid by the company after convertions and fx",
+        net_fee: "Gross fee minus taxes"
+    },
+    bigquery: {
+        partitionBy: "received_Ym"
+    },
+    tags: ["silver", "daily", "full_refresh"],
+    assertions: {
+        nonNull: ["creator_id", "received_timestamp"],
+        rowConditions: [
+            "net_fee is null or net_fee > 0.0"
+        ]
+    }
+}
+
+SELECT
+  r.bot_id AS creator_id,
+  FORMAT_DATE("%Y-%m-%d", r.paid_at) AS received_date,
+  FORMAT_DATE("%Y-%m", r.paid_at) AS received_Ym,
+  r.paid_at AS received_timestamp,
+  r.settled_usd_amount AS gmv,
+  r.settled_usd_fee AS gross_fee,
+  r.settled_usd_fee - coalesce(settled_usd_tax, 0.0) AS net_fee,
+  r.settled_usd_tax AS fee_tax,
+  SUM(r.settled_usd_amount) OVER (PARTITION BY r.bot_id ORDER BY r.paid_at) AS cumulative_gmv_by_creator,
+  SUM(r.settled_usd_fee) OVER (PARTITION BY r.bot_id ORDER BY r.paid_at) AS cumulative_gross_fee_by_creator
+FROM
+  ${ref("receipts")} r
+WHERE
+  r.paid_at IS NOT NULL
+  AND r.status = "paid"
+  AND r.imported_at IS NULL
+ORDER BY received_timestamp, creator_id
