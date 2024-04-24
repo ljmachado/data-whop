@@ -5,7 +5,6 @@ config {
         received_at: "Date of settlement for the receipt",
         gmv: "GMV processed by the company after conversions and fx",
         gross_fee: "Actual fee receiveid by the company after convertions and fx",
-        net_fee: "Gross fee minus taxes"
     },
     bigquery: {
         partitionBy: "DATETIME_TRUNC(received_timestamp, MONTH)"
@@ -14,7 +13,6 @@ config {
     assertions: {
         nonNull: ["creator_id", "received_timestamp"],
         rowConditions: [
-            "net_fee is null or net_fee >= 0.0",
             "gmv is null or gmv >= 0.0"
         ]
     }
@@ -28,8 +26,7 @@ SELECT
   r.paid_at AS received_timestamp,
   r.settled_usd_amount AS gmv,
   r.settled_usd_fee AS gross_fee,
-  r.settled_usd_fee - coalesce(settled_usd_tax, 0.0) AS net_fee,
-  r.settled_usd_tax AS fee_tax,
+  r.settled_usd_tax AS gmv_tax,
   SUM(r.settled_usd_amount) OVER (PARTITION BY r.bot_id ORDER BY r.paid_at) AS cumulative_gmv_by_creator,
   SUM(r.settled_usd_fee) OVER (PARTITION BY r.bot_id ORDER BY r.paid_at) AS cumulative_gross_fee_by_creator
 FROM
