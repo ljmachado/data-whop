@@ -1,0 +1,6 @@
+config {
+    type: "declaration",
+    database: "whop-c2683",
+    schema: "whop_postgres", // BigQuery dataset
+    name: "receipts" // BigQuery table
+}
