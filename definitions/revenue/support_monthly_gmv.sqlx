@@ -1,0 +1,76 @@
+config {
+  type: "table",
+  description: "General GMV data to support revenue dashboards",
+  tags: ["gold", "daily", "full_refresh"],
+  assertions: {
+        rowConditions: [
+            "current_month_gmv is null or current_month_gmv >= 0.0",
+            "current_cumulative_month_gmv is null or previous_cumulative_month_gmv is null or current_cumulative_month_gmv >= previous_cumulative_month_gmv"
+        ]
+    }
+}
+
+WITH ALL_MONTHS AS (
+  SELECT FORMAT_DATE('%Y-%m', year_month) as year_month
+  FROM UNNEST(GENERATE_DATE_ARRAY('2022-01-01', CURRENT_DATE(), INTERVAL 1 MONTH)) AS year_month
+),
+
+ALL_BOTS AS (
+  SELECT DISTINCT creator_id
+  FROM ${ref("receipts_whop")}
+),
+
+ALL_BOT_MONTHS AS (
+  SELECT b.creator_id, m.year_month
+  FROM ALL_BOTS b
+  CROSS JOIN ALL_MONTHS m
+),
+
+
+DB_MONTH_AUX AS (
+  SELECT 
+      creator_id,
+      received_Ym as year_month,
+      SUM(gmv) as current_month_gmv,
+      SUM(gross_fee) as current_month_fee,
+  FROM ${ref("receipts_whop")}
+  GROUP BY creator_id, year_month
+),
+
+DB_MONTH AS (
+  SELECT 
+      creator_id,
+      year_month,
+      current_month_gmv,
+      current_month_fee,
+      SUM(current_month_gmv) OVER (PARTITION BY creator_id ORDER BY year_month) AS current_cumulative_month_gmv
+  FROM DB_MONTH_AUX
+  ORDER BY year_month
+),
+
+DB_ALL_MONTHS AS (
+  SELECT
+      a.creator_id, 
+      a.year_month,
+      FORMAT_DATE("%Y-%m", DATE_SUB(PARSE_DATE("%Y-%m", a.year_month), INTERVAL 1 MONTH)) AS previous_year_month,
+      IFNULL(m.current_month_gmv, 0) AS current_month_gmv,
+      IFNULL(m.current_cumulative_month_gmv, 0) AS current_cumulative_month_gmv,
+      IFNULL(m.current_month_fee, 0) AS current_month_fee,
+  FROM ALL_BOT_MONTHS a
+  LEFT JOIN DB_MONTH m
+  ON a.creator_id = m.creator_id AND a.year_month = m.year_month
+  ORDER BY a.creator_id, a.year_month
+)
+
+SELECT
+  db1.creator_id,
+  db1.year_month AS current_year_month,
+  db1.previous_year_month AS previous_year_month,
+  db1.current_month_gmv AS current_month_gmv,
+  db1.current_month_fee AS current_month_fee,
+  db2.current_month_gmv AS previous_month_gmv,
+  db1.current_cumulative_month_gmv AS current_cumulative_month_gmv,
+  db2.current_cumulative_month_gmv AS previous_cumulative_month_gmv,
+FROM DB_ALL_MONTHS db1
+LEFT JOIN DB_ALL_MONTHS db2 ON db1.creator_id = db2.creator_id AND db1.previous_year_month = db2.year_month
+ORDER BY creator_id, current_year_month
